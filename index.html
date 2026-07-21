@@ -13,11 +13,19 @@
     }
     #hud .err { color: #ff7b7b; }
     #hud .ok { color: #7bff9f; }
+    #feed {
+      position: fixed; bottom: 8px; left: 8px; color: #9fb4dd; background: rgba(10, 14, 30, .72);
+      padding: 6px 10px; border: 1px solid #2a3b66; border-radius: 6px; font-size: 11px;
+      line-height: 1.45; pointer-events: none; max-width: 46em;
+      font-family: Consolas, monospace;
+    }
+    #feed:empty { display: none; }
   </style>
 </head>
 <body>
   <div id="app"></div>
   <div id="hud">connecting to sim...</div>
+  <div id="feed"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
