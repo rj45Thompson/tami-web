@@ -65,20 +65,52 @@ same, every menu" (much bigger, out of scope for one night).
       end turn). Random mode confirmed to SKIP deploy entirely (matches the
       earlier ask to "avoid doing any menus" for the AI-test path) - both
       paths now provably work.
-- [ ] NOT done tonight (deliberately deferred, see below): full
-      Victory/Defeat playthrough to the end of a match (mechanism is a
-      simple 2-line CSS class toggle on an already-correct field, low risk,
-      just didn't sit through a full battle); roster editor open/close/
-      add/remove/apply (open+close+state routes exist, wired to nothing in
-      the UI yet); attack-range highlighting (real game has an "AttackRange"
-      tile-highlight layer; tami-web has none, which is WHY the softlock
-      repro was easy to hit - Cancel is the safety net, not a substitute for
-      showing range); equip-item (accessory) chips (53 options per unit,
-      skipped for UI-clutter reasons, ability chips only); mapMode raycasting
-      against invisible schematic tiles (harmless edge case, noted not fixed).
-- [x] Commit + push tami-web (git), checkin Tami C# changes (Plastic cs:1276,
-      suites 5559/0 immediately before checkin).
-- [ ] Update memory (project_tami_web_threejs.md) with final state.
+- [x] **Range preview** - added `Tile.HasHighlight(layer)` (Tile.cs already
+      tracks per-layer highlight state for its own rendering) + surfaced as
+      `atkRange`/`moveRange` tile flags in `/state`. This is the EXACT
+      valid-target set the game itself computed (respects obstacles/
+      movement traits/everything), not a client approximation. Verified
+      live: armed an attack, confirmed 3 `atkRange:true` tiles server-side,
+      confirmed the client renders exactly 3 red overlay meshes for them
+      (one false-negative check turned out to be a stale-HMR-module
+      artifact, resolved by a hard reload - not a real bug).
+      Known limitation (documented, not fixed): highlights only populate
+      once the game enters server-side targeting mode, which currently
+      only happens on tile-click (not on arming the technique) - so the
+      preview shows up reactively once you're already mid-target-pick /
+      recovering via Cancel, not proactively before your first click. A
+      full fix needs splitting DoAction's attack case into a separate
+      "arm" (OnAttackClick only) vs "confirm" (tile click) step - clearly
+      scoped, deferred as a follow-up, not attempted under time pressure.
+- [ ] NOT done tonight (deliberately deferred): full Victory/Defeat
+      playthrough to match conclusion (mechanism is a 2-line CSS class
+      toggle on an already-correct field, low risk, just didn't sit through
+      a full battle); roster editor open/close/add/remove/apply (routes
+      exist, wired to nothing in the UI - RosterAdd needs a pool-list route
+      that doesn't exist yet; DeploymentController.Roster.cs is a whole
+      procedural UGui pool-grid+18-element-filter system, real scope);
+      arm-before-click range preview (see above); equip-item/accessory
+      chips (53 options per unit, skipped for UI-clutter reasons, ability
+      chips only); mapMode raycasting against invisible schematic tiles
+      (harmless edge case).
+- [x] Commit + push tami-web (git commits through 57c2913 + range-preview
+      commit), checkin Tami C# changes (Plastic cs:1276 + cs:1277, suites
+      5559/0 immediately before each checkin), redeployed GitHub Pages.
+- [x] Update memory (project_tami_web_threejs.md) with final state.
+
+## Tonight's real findings, for anyone reading this cold
+Two genuine bugs were found and fixed in the ALREADY-EXISTING WebPlayBridge
+backend while building tonight's front-end against it live - not code review,
+actually reproduced against a running container each time:
+1. Title screen indistinguishable from battle via `/state` alone (GameManager
+   exists even pre-battle) - fixed by checking `/menu/state` first.
+2. A real softlock: out-of-range attack/move target leaves the game stuck with
+   NO recovery via the HTTP API (End Turn included) - fixed with
+   `/action?type=cancel`, ungated on the yourTurn/Idle guard that blocks
+   everything else.
+Both are now server-side fixes (cs:1276/1277), not just client workarounds -
+they'd have bitten the ORIGINAL WebPlayBridge HTML client too, had anyone
+pushed on it hard enough.
 
 ## Notes / gotchas for future-me (or future session)
 - WebPlayBridge GameMode enum: Random, VSMatch, Arena, Retro, TestScenarios,

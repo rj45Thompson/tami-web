@@ -129,11 +129,17 @@ function terrainMat(terrain) {
 }
 
 const FX_STYLE = {
-  burn:   { color: 0xff5a1a, opacity: 0.55, lift: 0.06 },
-  frozen: { color: 0xa8e6ff, opacity: 0.55, lift: 0.05 },
-  mist:   { color: 0xdfe6f5, opacity: 0.35, lift: 0.55 },
-  plant:  { color: 0x2fae4a, opacity: 0.5,  lift: 0.05 },
-  flower: { color: 0xff7ad1, opacity: 0.5,  lift: 0.05 },
+  burn:      { color: 0xff5a1a, opacity: 0.55, lift: 0.06 },
+  frozen:    { color: 0xa8e6ff, opacity: 0.55, lift: 0.05 },
+  mist:      { color: 0xdfe6f5, opacity: 0.35, lift: 0.55 },
+  plant:     { color: 0x2fae4a, opacity: 0.5,  lift: 0.05 },
+  flower:    { color: 0xff7ad1, opacity: 0.5,  lift: 0.05 },
+  // Real AttackRange/MoveRange highlight state mirrored from the game's own
+  // tile highlight layers (Tile.HasHighlight) - exact valid-target preview,
+  // not a client-side approximation. Distinct colors so a player can tell
+  // "can move here" from "can attack here" at a glance.
+  atkRange:  { color: 0xff4444, opacity: 0.4,  lift: 0.09 },
+  moveRange: { color: 0x4aa3ff, opacity: 0.35, lift: 0.09 },
 };
 const fxGeo = new THREE.PlaneGeometry(TILE * 0.92, TILE * 0.92);
 
