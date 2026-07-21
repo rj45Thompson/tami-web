@@ -49,7 +49,34 @@ npm run dev          # http://localhost:5173 - live board
 ```
 
 Agent verification loop: `GET /api/console/tail?errors=1` after any battle = the
-regression channel (BUG-361 class); `GET /api/state` = assertable game state.
+regression channel (BUG-361 class); `GET /api/state` = assertable game state;
+`GET /api/frame` = live JPEG of the real Unity render (~7 fps).
+
+## unity-docker - one disposable game instance per agent
+
+Instead of N agents contending for the single shared Unity editor, each agent gets
+its own standalone player "container", launched from the one build:
+
+```powershell
+node docker.mjs up 3            # agent0 :7890, agent1 :7891, agent2 :7892
+node docker.mjs ls              # live health via /state
+node docker.mjs battle agent0 watch
+node docker.mjs battle agent1 mega 10
+node docker.mjs stop            # all (or: stop agent1)
+```
+
+Each instance gets `-bridgeport N -instance NAME` (exact port, own port file, own
+`-logFile`), and the player forces `Application.runInBackground` so unfocused
+instances keep simulating. Agents talk straight HTTP to `localhost:<port>` -
+`/state`, `/frame`, `/console/tail`, `/watchbattle`, `/megabattle`, `/shot`,
+`/quit` - full isolation: a crashed or wedged instance is `stop`+`up` away from
+fresh, and never touches the editor or other agents. The vite proxy auto-targets
+the first docker instance when any are up.
+
+Editor-vs-builds tradeoff, honestly: the editor still wins for rapid C# iteration
+(domain reload beats the 0.8-min clone rebuild), but for AI chores - test battles,
+verification sweeps, screenshots, parallel exploration - builds win outright:
+isolated, parallel, disposable, no focus/compile contention.
 
 ## Budget - "copy the game to three.js", one game mode (Random Battle, no menus)
 

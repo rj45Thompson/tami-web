@@ -8,6 +8,11 @@ export const TAMI_ASSETS = 'D:/code/Tami/Tami/Assets';
 // Game bridge (WebPlayBridge inside the standalone player / editor play mode).
 // Port may fall back 7870-7875; read the port file when present.
 function bridgePort() {
+  // Prefer a unity-docker instance if the manager has any up.
+  try {
+    const st = JSON.parse(fs.readFileSync(path.join(process.cwd(), '_docker/state.json'), 'utf8'));
+    if (st.instances?.length) return st.instances[0].port;
+  } catch { /* no docker state */ }
   for (const f of ['D:/_tami_build/web_play_port.txt', 'D:/code/Tami/Tami/web_play_port.txt']) {
     try {
       const p = parseInt(fs.readFileSync(f, 'utf8').trim(), 10);
