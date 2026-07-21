@@ -312,6 +312,7 @@ async function pollConsole() {
 let lastGridKey = '';
 function autoFit(grid, units) {
   if (userOrbited) return;
+  if (mapMode && !units?.length) return;   // between battles: hold framing
   if (mapMode && units?.length) {
     // Fit the units' world bounding box on the real map.
     const box = new THREE.Box3();
