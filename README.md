@@ -61,6 +61,24 @@ Agent verification loop: `GET /api/console/tail?errors=1` after any battle = the
 regression channel (BUG-361 class); `GET /api/state` = assertable game state;
 `GET /api/frame` = live JPEG of the real Unity render (~7 fps).
 
+## Deploying the hosted viewer (GitHub Pages)
+
+Actions is blocked by an account billing lock, so deploys go via the legacy
+branch route (GitHub's Pages infra, no Actions minutes):
+
+```powershell
+npm run build
+cd dist; ni .nojekyll -ItemType File -Force | Out-Null
+git init -b gh-pages; git add -A; git commit -m "pages deploy"
+git push -f https://github.com/rj45Thompson/tami-web.git gh-pages
+cd ..; rm -r -fo dist\.git
+```
+
+Then (first time only) point Pages at the branch:
+`gh api -X PUT repos/rj45Thompson/tami-web/pages -f build_type=legacy -f "source[branch]=gh-pages" -f "source[path]=/"`.
+Once billing is fixed, re-enable the push trigger in `.github/workflows/pages.yml`
+and switch `build_type` back to `workflow`.
+
 ## unity-docker - one disposable game instance per agent
 
 Instead of N agents contending for the single shared Unity editor, each agent gets

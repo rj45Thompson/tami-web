@@ -1,8 +1,11 @@
 name: pages
 
+# NOTE 2026-07-20: push trigger disabled - the GitHub account has a billing
+# lock, so Actions jobs refuse to start. Pages currently deploys via the
+# LEGACY branch route instead (npm run build, push dist to gh-pages - see
+# README "Deploying the hosted viewer"). When billing is fixed: re-add the
+# push trigger and switch Pages build_type back to workflow.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
