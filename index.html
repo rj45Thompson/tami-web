@@ -20,12 +20,23 @@
       font-family: Consolas, monospace;
     }
     #feed:empty { display: none; }
+    #unityview {
+      position: fixed; top: 8px; right: 8px; border: 1px solid #2a3b66; border-radius: 6px;
+      overflow: hidden; background: #000; display: none; cursor: pointer;
+    }
+    #unityview img { display: block; width: 380px; height: auto; }
+    #unityview.big img { width: 900px; }
+    #unityview .tag {
+      position: absolute; left: 6px; top: 4px; color: #cfe3ff; font: 11px Consolas, monospace;
+      background: rgba(10, 14, 30, .7); padding: 1px 6px; border-radius: 4px; pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <div id="app"></div>
   <div id="hud">connecting to sim...</div>
   <div id="feed"></div>
+  <div id="unityview" title="click to toggle size"><img id="unityframe" alt="" /><span class="tag">UNITY LIVE</span></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

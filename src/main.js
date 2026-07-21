@@ -317,6 +317,34 @@ setInterval(pollConsole, POLL_CONSOLE_MS);
 pollState();
 pollConsole();
 
+// ── UNITY LIVE VIEW ──────────────────────────────────────────────────────────
+// Picture-in-picture of the REAL Unity render, polled from /frame (the
+// "reuse Unity, redo only the delivery" shortcut). Click toggles size.
+const POLL_FRAME_MS = 150;
+const unityView = document.getElementById('unityview');
+const unityImg = document.getElementById('unityframe');
+unityView.addEventListener('click', () => unityView.classList.toggle('big'));
+let lastFrameUrl = null;
+async function pollFrame() {
+  try {
+    const r = await fetch('/api/frame');
+    if (!r.ok || !(r.headers.get('content-type') || '').includes('image')) {
+      unityView.style.display = 'none';
+      return;
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    unityImg.src = url;
+    if (lastFrameUrl) URL.revokeObjectURL(lastFrameUrl);
+    lastFrameUrl = url;
+    unityView.style.display = 'block';
+  } catch {
+    unityView.style.display = 'none';
+  }
+}
+setInterval(pollFrame, POLL_FRAME_MS);
+pollFrame();
+
 // ── AGENT HOOK ───────────────────────────────────────────────────────────────
 // Deterministic canvas snapshot for the AI harness (render + read in one task,
 // so no preserveDrawingBuffer needed). Returns a PNG data URL.
