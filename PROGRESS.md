@@ -86,16 +86,19 @@ same, every menu" (much bigger, out of scope for one night).
 - [x] Range-highlight color tuned (amber/cyan) after the first screenshot
       showed it blending with the existing red/blue per-unit team rings -
       cosmetic-only fix, mechanism was already correct.
-- [ ] NOT done tonight (deliberately deferred): full Victory/Defeat
-      playthrough to match conclusion (mechanism is a 2-line CSS class
-      toggle on an already-correct field, low risk, just didn't sit through
-      a full battle); roster editor open/close/add/remove/apply (routes
-      exist, wired to nothing in the UI - RosterAdd needs a pool-list route
-      that doesn't exist yet; DeploymentController.Roster.cs is a whole
-      procedural UGui pool-grid+18-element-filter system, real scope);
-      equip-item/accessory chips (53 options per unit, skipped for
-      UI-clutter reasons, ability chips only); mapMode raycasting against
-      invisible schematic tiles (harmless edge case).
+- [x] **Victory/Defeat playthrough** - ran a real Random battle to actual
+      conclusion (End Turn spam, no manual attacks - the player team was
+      eliminated). Confirmed `/state` reports `state:"Defeat"`, confirmed
+      through the browser: `#banner` className="defeat", text="DEFEAT",
+      display="block". Mechanism was already correct; now proven against a
+      REAL match ending, not just a code read.
+- [ ] NOT done tonight (deliberately deferred): roster editor open/close/
+      add/remove/apply (routes exist, wired to nothing in the UI - RosterAdd
+      needs a pool-list route that doesn't exist yet; DeploymentController.
+      Roster.cs is a whole procedural UGui pool-grid+18-element-filter
+      system, real scope); equip-item/accessory chips (53 options per unit,
+      skipped for UI-clutter reasons, ability chips only); mapMode
+      raycasting against invisible schematic tiles (harmless edge case).
 - [x] Commit + push tami-web (git commits through the arm/armmove +
       color-tune commit), checkin Tami C# changes (Plastic cs:1276, 1277,
       1278 - suites 5559/0 immediately before EACH checkin), redeployed
