@@ -6,26 +6,52 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ── SIM DISCOVERY ────────────────────────────────────────────────────────────
-// Dev: the vite proxy at /api targets the first unity-docker container.
-// Hosted (GitHub Pages): no proxy exists, but browsers treat localhost as a
-// secure origin and WebPlayBridge sends CORS on every route - so the hosted
-// page probes the local container ports directly and drives the sim that way.
+// Dev: the vite proxy at /api already targets the freshest unity-docker
+// container (vite.config.js picks the newest startedAtMs from state.json).
+// Hosted (GitHub Pages): no proxy or filesystem access exists, but browsers
+// treat localhost as a secure origin and WebPlayBridge sends CORS on every
+// route - so the hosted page probes every candidate port directly. Multiple
+// containers can be up at once (unity-docker), so "connect to the right one"
+// means the MOST RECENTLY STARTED (smallest reported uptimeMs) - not just
+// whichever port answers first. Re-probed periodically so a container
+// started AFTER the page loaded gets picked up automatically too.
 let API_BASE = '/api';
-async function resolveSim() {
+const RESCAN_MS = 8000;
+
+async function probeCandidate(base) {
+  try {
+    const r = await fetch(`${base}/state`, { signal: AbortSignal.timeout(1200) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return (j && j.ok !== undefined) ? { base, uptimeMs: j.uptimeMs ?? Infinity } : null;
+  } catch { return null; }
+}
+
+async function scanForFreshest() {
   const candidates = ['/api'];
   for (let p = 7890; p <= 7899; p++) candidates.push(`http://localhost:${p}`);
   for (let p = 7870; p <= 7875; p++) candidates.push(`http://localhost:${p}`);
-  for (const base of candidates) {
-    try {
-      const r = await fetch(`${base}/state`, { signal: AbortSignal.timeout(1200) });
-      if (r.ok) {
-        const j = await r.json();
-        if (j && j.ok !== undefined) { API_BASE = base; console.log('[tami-web] sim at', base); return true; }
-      }
-    } catch { /* next candidate */ }
-  }
-  return false;
+  const hits = (await Promise.all(candidates.map(probeCandidate))).filter(Boolean);
+  if (!hits.length) return null;
+  // '/api' (the dev proxy) has no uptimeMs of its own to compare fairly - if
+  // it's up at all, it's already routing to the freshest container server-
+  // side, so prefer it outright over directly-probed ports.
+  const viaProxy = hits.find((h) => h.base === '/api');
+  if (viaProxy) return viaProxy;
+  return hits.reduce((a, b) => (b.uptimeMs < a.uptimeMs ? b : a));
 }
+
+async function resolveSim() {
+  const best = await scanForFreshest();
+  if (!best) return false;
+  if (best.base !== API_BASE) console.log('[tami-web] sim at', best.base, 'uptimeMs=', best.uptimeMs);
+  API_BASE = best.base;
+  return true;
+}
+
+// Keep checking for a newer instance in the background - "auto-connect to
+// whichever one last started" is an ongoing property, not a one-time pick.
+setInterval(resolveSim, RESCAN_MS);
 
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const POLL_STATE_MS = 400;      // /api/state cadence

@@ -102,6 +102,43 @@ same, every menu" (much bigger, out of scope for one night).
       GitHub Pages after every meaningful chunk.
 - [x] Update memory (project_tami_web_threejs.md) with final state.
 
+## Auto-connect to the freshest instance (2026-07-21, RJ: "can it auto connect
+to last guy who tries" - read as: auto-connect to whichever container/
+instance started most recently, and keep following it)
+- [x] `docker.mjs` stamps `startedAtMs` on every instance in `_docker/state.json`.
+- [x] Dev mode: replaced vite's built-in STATIC `server.proxy` (target resolved
+      once at server start - genuinely can't follow a container started
+      later without a vite restart, confirmed by testing) with a custom
+      `/api` middleware (`apiProxyPlugin`) that re-reads state.json and
+      re-resolves the target on EVERY request. Verified live: started agent0,
+      confirmed proxy->agent0; started agent1 (later), confirmed proxy
+      switched to agent1 with ZERO vite restart.
+  - Bug found + fixed en route: forwarding the browser's original `Host`
+    header (`localhost:5173`) to the upstream `http.request` call made
+    Windows `HttpListener` refuse the connection (prefix mismatch) - a 502
+    with no vite-side error until I added logging. Fix: strip `host` from
+    the forwarded headers so Node sets the correct one from the target URL.
+- [x] Hosted mode (no filesystem access): added `uptimeMs` to `/state`
+      (`Time.realtimeSinceStartupAsDouble`, cs:1279) so the browser can
+      compare candidates it can only reach by direct port probe. `main.js`
+      now probes ALL candidate ports concurrently (was: stop at first hit),
+      picks the lowest uptimeMs, and re-scans every 8s so a container
+      started after page load gets picked up without a reload.
+      Verified: the comparison logic (min-uptime reduce) confirmed correct
+      against two live containers with different start times.
+- ⚠ **Container reliability note**: docker containers died unexpectedly
+  TWICE while testing this feature (no exception/crash logged - clean
+  Physics/Input shutdown sequence with nothing before it, consistent with
+  an EXTERNAL kill, not a self-inflicted quit). Root cause found: the
+  SHARED Unity editor crashed mid-session ("A crash has been intercepted
+  by the crash handler" in Editor.log) - almost certainly resource
+  contention from running 2 standalone Tami.exe containers AND the
+  editor's heavy /test/all pass at the same time on one machine. Recovered
+  via `unity_recovery.py --auto` (documented in CLAUDE.md for exactly this
+  signature). Lesson: don't run docker containers concurrently with a
+  heavy editor test/recompile cycle; stop containers between unrelated
+  test chunks rather than leaving several idle.
+
 ## Tonight's real findings, for anyone reading this cold
 Two genuine bugs were found and fixed in the ALREADY-EXISTING WebPlayBridge
 backend while building tonight's front-end against it live - not code review,

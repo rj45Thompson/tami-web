@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
+import http from 'node:http';
 
 // Absolute path into the Plastic workspace - assets are read in place, never copied.
 export const TAMI_ASSETS = 'D:/code/Tami/Tami/Assets';
@@ -8,10 +9,17 @@ export const TAMI_ASSETS = 'D:/code/Tami/Tami/Assets';
 // Game bridge (WebPlayBridge inside the standalone player / editor play mode).
 // Port may fall back 7870-7875; read the port file when present.
 function bridgePort() {
-  // Prefer a unity-docker instance if the manager has any up.
+  // Prefer a unity-docker instance if the manager has any up - the MOST
+  // RECENTLY STARTED one (docker.mjs appends to state.instances on `up`,
+  // stamping startedAtMs, so the freshest instance is the one you just
+  // launched, not whichever happened to be first in the array).
   try {
     const st = JSON.parse(fs.readFileSync(path.join(process.cwd(), '_docker/state.json'), 'utf8'));
-    if (st.instances?.length) return st.instances[0].port;
+    if (st.instances?.length) {
+      const newest = st.instances.reduce((a, b) =>
+        (b.startedAtMs ?? 0) > (a.startedAtMs ?? 0) ? b : a);
+      return newest.port;
+    }
   } catch { /* no docker state */ }
   for (const f of ['D:/_tami_build/web_play_port.txt', 'D:/code/Tami/Tami/web_play_port.txt']) {
     try {
@@ -20,6 +28,42 @@ function bridgePort() {
     } catch { /* not running from this root */ }
   }
   return 7870;
+}
+
+/**
+ * /api/* proxy with the target resolved FRESH on every request (not once at
+ * server start, unlike vite's built-in server.proxy). Without this, bringing
+ * up a NEWER unity-docker container after vite has already started leaves
+ * the dev proxy pointed at the stale one until vite itself restarts - which
+ * defeats "auto-connect to whichever last started" for the common case of
+ * `node docker.mjs up` while the page is already open (2026-07-21).
+ */
+function apiProxyPlugin() {
+  return {
+    name: 'api-live-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api', (req, res) => {
+        // connect's use('/api', fn) already strips the '/api' prefix from
+        // req.url before calling this handler.
+        const port = bridgePort();
+        const upstream = new URL(req.url || '/', `http://localhost:${port}`);
+        // Drop the browser's original Host header (localhost:5173) - Windows
+        // HttpListener matches its registered prefix against Host and 502s
+        // (well, resets) a request whose Host doesn't say the listener's own
+        // port. http.request sets the correct Host itself once this key is gone.
+        const { host: _drop, ...headers } = req.headers;
+        const proxyReq = http.request(upstream, { method: req.method, headers }, (proxyRes) => {
+          res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+          proxyRes.pipe(res);
+        });
+        proxyReq.on('error', (err) => {
+          console.error('[api-live-proxy]', upstream.href, err.code || err.message);
+          res.statusCode = 502; res.end('sim unreachable');
+        });
+        req.pipe(proxyReq);
+      });
+    },
+  };
 }
 
 const MIME = {
@@ -75,15 +119,8 @@ function snapSinkPlugin() {
 export default defineConfig(({ command }) => ({
   // GitHub Pages serves the built site at /tami-web/ - dev stays at root.
   base: command === 'build' ? '/tami-web/' : '/',
-  plugins: [tamiAssetsPlugin(), snapSinkPlugin()],
+  plugins: [tamiAssetsPlugin(), snapSinkPlugin(), apiProxyPlugin()],
   server: {
     port: 5173,
-    proxy: {
-      '/api': {
-        target: `http://localhost:${bridgePort()}`,
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ''),
-      },
-    },
   },
 }));

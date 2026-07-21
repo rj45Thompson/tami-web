@@ -94,12 +94,12 @@ async function up(count) {
         console.error(`[docker] ${name} FAILED twice on :${port} - giving up`);
         continue;
       }
-      state.instances.push({ name, port, pid: retry.pid });
+      state.instances.push({ name, port, pid: retry.pid, startedAtMs: Date.now() });
       saveState(state);
       console.log(`[docker] ${name} up  :${port}  pid ${retry.pid}  state=${ok.state} (retry)`);
       continue;
     }
-    state.instances.push({ name, port, pid: child.pid });
+    state.instances.push({ name, port, pid: child.pid, startedAtMs: Date.now() });
     saveState(state);
     console.log(`[docker] ${name} up  :${port}  pid ${child.pid}  state=${ok.state}`);
   }
