@@ -138,8 +138,11 @@ const FX_STYLE = {
   // tile highlight layers (Tile.HasHighlight) - exact valid-target preview,
   // not a client-side approximation. Distinct colors so a player can tell
   // "can move here" from "can attack here" at a glance.
-  atkRange:  { color: 0xff4444, opacity: 0.4,  lift: 0.09 },
-  moveRange: { color: 0x4aa3ff, opacity: 0.35, lift: 0.09 },
+  // Distinct from the per-unit team rings (also red/blue) - amber/cyan reads
+  // clearly as "ground highlight" instead of colliding with enemy-red at a
+  // glance (found during tonight's visual verification screenshot).
+  atkRange:  { color: 0xffa500, opacity: 0.45, lift: 0.09 },
+  moveRange: { color: 0x30e0d0, opacity: 0.4,  lift: 0.09 },
 };
 const fxGeo = new THREE.PlaneGeometry(TILE * 0.92, TILE * 0.92);
 
@@ -498,7 +501,13 @@ function renderBattleActions(s) {
 
   const moveBtn = actionsEl.querySelector('.movebtn');
   if (moveBtn && s.canMove) moveBtn.addEventListener('click', () => {
-    pending = pending?.kind === 'move' ? null : { kind: 'move' };
+    if (pending?.kind === 'move') {
+      fetch(`${API_BASE}/action?type=cancel`);
+      pending = null;
+    } else {
+      fetch(`${API_BASE}/action?type=armmove`);
+      pending = { kind: 'move' };
+    }
     renderBattleActions(s);
   });
   actionsEl.querySelectorAll('.atkbtn:not(.disabled)').forEach((b) => b.addEventListener('click', () => {
@@ -506,8 +515,18 @@ function renderBattleActions(s) {
     if (b.dataset.self === 'true') {
       fetch(`${API_BASE}/action?type=attack&slot=${slot}`);
       pending = null;
+    } else if (pending?.kind === 'attack' && pending.slot === slot) {
+      // Un-arming client-side only leaves the server mid-targeting (from the
+      // /action?type=arm call below) - cancel it so state gets back to Idle.
+      fetch(`${API_BASE}/action?type=cancel`);
+      pending = null;
     } else {
-      pending = (pending?.kind === 'attack' && pending.slot === slot) ? null : { kind: 'attack', slot };
+      // Arm server-side immediately (not just client `pending`) so the next
+      // /state poll's atkRange tile flags populate BEFORE the player picks a
+      // tile - the proactive range preview tonight's softlock fix was aiming
+      // for (see PROGRESS.md "arm-before-click").
+      fetch(`${API_BASE}/action?type=arm&slot=${slot}`);
+      pending = { kind: 'attack', slot };
     }
     renderBattleActions(s);
   }));

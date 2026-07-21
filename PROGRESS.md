@@ -74,14 +74,18 @@ same, every menu" (much bigger, out of scope for one night).
       confirmed the client renders exactly 3 red overlay meshes for them
       (one false-negative check turned out to be a stale-HMR-module
       artifact, resolved by a hard reload - not a real bug).
-      Known limitation (documented, not fixed): highlights only populate
-      once the game enters server-side targeting mode, which currently
-      only happens on tile-click (not on arming the technique) - so the
-      preview shows up reactively once you're already mid-target-pick /
-      recovering via Cancel, not proactively before your first click. A
-      full fix needs splitting DoAction's attack case into a separate
-      "arm" (OnAttackClick only) vs "confirm" (tile click) step - clearly
-      scoped, deferred as a follow-up, not attempted under time pressure.
+- [x] **Proactive arm** (the follow-up from the item above, done same night):
+      `/action?type=arm` (attack) / `type=armmove` (move) call
+      OnAttackClick/OnMoveClick ONLY, no tile - so atkRange/moveRange
+      populate on the NEXT poll, before the player picks a target, instead
+      of only reactively after a bad guess. Verified live through the
+      actual browser UI: clicked a technique button, confirmed 3 exact
+      valid-target tiles highlighted within ~900ms, zero tile clicks made
+      first. Existing `attack`/`move` (tile+fire) cases unchanged, idempotent
+      re-arm-safe either way a client calls them.
+- [x] Range-highlight color tuned (amber/cyan) after the first screenshot
+      showed it blending with the existing red/blue per-unit team rings -
+      cosmetic-only fix, mechanism was already correct.
 - [ ] NOT done tonight (deliberately deferred): full Victory/Defeat
       playthrough to match conclusion (mechanism is a 2-line CSS class
       toggle on an already-correct field, low risk, just didn't sit through
@@ -89,13 +93,13 @@ same, every menu" (much bigger, out of scope for one night).
       exist, wired to nothing in the UI - RosterAdd needs a pool-list route
       that doesn't exist yet; DeploymentController.Roster.cs is a whole
       procedural UGui pool-grid+18-element-filter system, real scope);
-      arm-before-click range preview (see above); equip-item/accessory
-      chips (53 options per unit, skipped for UI-clutter reasons, ability
-      chips only); mapMode raycasting against invisible schematic tiles
-      (harmless edge case).
-- [x] Commit + push tami-web (git commits through 57c2913 + range-preview
-      commit), checkin Tami C# changes (Plastic cs:1276 + cs:1277, suites
-      5559/0 immediately before each checkin), redeployed GitHub Pages.
+      equip-item/accessory chips (53 options per unit, skipped for
+      UI-clutter reasons, ability chips only); mapMode raycasting against
+      invisible schematic tiles (harmless edge case).
+- [x] Commit + push tami-web (git commits through the arm/armmove +
+      color-tune commit), checkin Tami C# changes (Plastic cs:1276, 1277,
+      1278 - suites 5559/0 immediately before EACH checkin), redeployed
+      GitHub Pages after every meaningful chunk.
 - [x] Update memory (project_tami_web_threejs.md) with final state.
 
 ## Tonight's real findings, for anyone reading this cold
@@ -108,9 +112,22 @@ actually reproduced against a running container each time:
    NO recovery via the HTTP API (End Turn included) - fixed with
    `/action?type=cancel`, ungated on the yourTurn/Idle guard that blocks
    everything else.
-Both are now server-side fixes (cs:1276/1277), not just client workarounds -
-they'd have bitten the ORIGINAL WebPlayBridge HTML client too, had anyone
-pushed on it hard enough.
+Both are server-side fixes (cs:1276/1277), not just client workarounds - they'd
+have bitten the ORIGINAL WebPlayBridge HTML client too, had anyone pushed on it
+hard enough. A third addition (not a bug fix, a feature closing the gap #2's
+UX left open): proactive range preview via `/action?type=arm|armmove`
+(cs:1278) - shows the exact valid-target set BEFORE the player has to guess.
+
+## Session summary (2026-07-20 -> 2026-07-21 overnight)
+Started from "port menus to three.js, how long would it take" (estimated
+2-3mo for full parity) -> discovered the interactive BACKEND already existed
+-> built the front-end for it in one night instead -> found and fixed 2 real
+bugs + shipped a proactive UX feature, all verified live against a running
+container, all checked into Plastic with full-suite verification each time,
+all pushed to GitHub + redeployed to Pages. Full interactive loop (title,
+deploy w/ placement+recall+equip, battle w/ move+attack+range-preview+cancel)
+is real and working, not a mockup. See the checklist above for exactly what's
+NOT covered (roster editor, victory/defeat playthrough, accessory equipping).
 
 ## Notes / gotchas for future-me (or future session)
 - WebPlayBridge GameMode enum: Random, VSMatch, Arena, Retro, TestScenarios,
