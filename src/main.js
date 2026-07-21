@@ -73,11 +73,21 @@ new GLTFLoader().load(
     mapMode = true;
     tileGroup.visible = false;
     scene.fog = null;
+    // The switch to world coordinates invalidates any earlier framing -
+    // retake camera control for one fresh fit even if the user touched it.
+    userOrbited = false;
+    lastGridKey = '';
     console.log('[tami-web] real map loaded - world-position mode');
   },
-  undefined,
-  () => console.log('[tami-web] no /map.glb - schematic grid mode'),
+  (progress) => {
+    if (progress.total) console.log(`[tami-web] map ${Math.round(progress.loaded / progress.total * 100)}%`);
+  },
+  (err) => console.error('[tami-web] map load FAILED:', err?.message || err),
 );
+window.__mapDbg = () => JSON.stringify({ mapMode, sceneChildren: scene.children.length, tilesVisible: tileGroup.visible });
+window.__sceneRef = scene;
+window.__THREE = THREE;
+window.__camRef = camera;
 addEventListener('keydown', (e) => {
   if (e.key === 'g' || e.key === 'G') tileGroup.visible = !tileGroup.visible;
 });
