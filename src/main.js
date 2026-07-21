@@ -3,6 +3,7 @@
 // The C# sim (standalone player / editor play mode) is authoritative; this is a view.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const POLL_STATE_MS = 400;      // /api/state cadence
@@ -18,6 +19,9 @@ const TERRAIN_COLORS = {
   Obstacle: 0x7a7a7a, Ridge: 0x8a6a4a, Sand: 0xd8c27a, Burning: 0xd86a30,
   Frozen: 0xbfe8f5, Mist: 0x9aa8c0, default: 0x55607a,
 };
+// glTF map mode: glTFast exports Unity's left-handed coords to right-handed
+// glTF by negating X - unit world positions must be mirrored the same way.
+const MAP_FLIP_X = -1;
 
 // ── SCENE ────────────────────────────────────────────────────────────────────
 const app = document.getElementById('app');
@@ -56,6 +60,27 @@ setInterval(() => {
   if (c.width === 0 || c.height === 0) fitRenderer();
 }, 500);
 fitRenderer();
+
+// ── REAL MAP (auto-ported from Unity via glTFast, if present) ────────────────
+// When /map.glb exists (AgentExportMap.Export), render the ACTUAL battle map
+// and place units at their world positions; the schematic tile grid becomes a
+// debug layer (press G to toggle it back on).
+let mapMode = false;
+new GLTFLoader().load(
+  '/map.gltf',
+  (gltf) => {
+    scene.add(gltf.scene);
+    mapMode = true;
+    tileGroup.visible = false;
+    scene.fog = null;
+    console.log('[tami-web] real map loaded - world-position mode');
+  },
+  undefined,
+  () => console.log('[tami-web] no /map.glb - schematic grid mode'),
+);
+addEventListener('keydown', (e) => {
+  if (e.key === 'g' || e.key === 'G') tileGroup.visible = !tileGroup.visible;
+});
 
 // ── TILES ────────────────────────────────────────────────────────────────────
 const tileGroup = new THREE.Group();
@@ -186,9 +211,13 @@ function syncUnits(units) {
   for (const u of units) {
     seen.add(u.name);
     const e = unitEntry(u);
-    const key = tileMeshes.get(`${u.c},${u.r}`);
-    const y = key ? tileTopY(key.mesh.userData.h) : 0.1;
-    e.target.set(u.c * TILE, y, u.r * TILE);
+    if (mapMode && u.wx !== undefined) {
+      e.target.set(u.wx * MAP_FLIP_X, u.wy, u.wz);
+    } else {
+      const key = tileMeshes.get(`${u.c},${u.r}`);
+      const y = key ? tileTopY(key.mesh.userData.h) : 0.1;
+      e.target.set(u.c * TILE, y, u.r * TILE);
+    }
     const frac = Math.max(0, Math.min(1, u.hp / (u.maxHp || 1)));
     e.hpFill.scale.x = Math.max(0.001, 0.78 * frac);
     e.hpFill.material.color.setHex(frac > 0.5 ? 0x44dd55 : frac > 0.25 ? 0xe8c545 : 0xdd4444);
@@ -271,9 +300,25 @@ async function pollConsole() {
 
 // ── CAMERA AUTO-FIT ──────────────────────────────────────────────────────────
 let lastGridKey = '';
-function autoFit(grid) {
+function autoFit(grid, units) {
+  if (userOrbited) return;
+  if (mapMode && units?.length) {
+    // Fit the units' world bounding box on the real map.
+    const box = new THREE.Box3();
+    for (const u of units)
+      if (u.wx !== undefined) box.expandByPoint(new THREE.Vector3(u.wx * MAP_FLIP_X, u.wy, u.wz));
+    if (box.isEmpty()) return;
+    const c = box.getCenter(new THREE.Vector3());
+    const span = Math.max(6, box.getSize(new THREE.Vector3()).length());
+    const key = `map:${c.x.toFixed(0)},${c.z.toFixed(0)},${span.toFixed(0)}`;
+    if (key === lastGridKey) return;
+    lastGridKey = key;
+    controls.target.copy(c);
+    camera.position.set(c.x + span * 0.5, c.y + span * 0.8, c.z + span * 0.7);
+    return;
+  }
   const key = `${grid.minC},${grid.maxC},${grid.minR},${grid.maxR}`;
-  if (key === lastGridKey || userOrbited) { lastGridKey = key; return; }
+  if (key === lastGridKey) { return; }
   lastGridKey = key;
   const cx = ((grid.minC + grid.maxC) / 2) * TILE;
   const cz = ((grid.minR + grid.maxR) / 2) * TILE;
@@ -295,7 +340,7 @@ async function pollState() {
     if (stateOk) {
       syncTiles(lastState.tiles || []);
       syncUnits(lastState.units || []);
-      if (lastState.grid) autoFit(lastState.grid);
+      if (lastState.grid) autoFit(lastState.grid, lastState.units);
     }
   } catch { stateOk = false; }
   drawHud();

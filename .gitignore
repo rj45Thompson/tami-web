@@ -3,3 +3,4 @@ dist/
 *.log
 _snaps/
 _docker/
+public/
