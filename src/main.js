@@ -5,6 +5,28 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+// ── SIM DISCOVERY ────────────────────────────────────────────────────────────
+// Dev: the vite proxy at /api targets the first unity-docker container.
+// Hosted (GitHub Pages): no proxy exists, but browsers treat localhost as a
+// secure origin and WebPlayBridge sends CORS on every route - so the hosted
+// page probes the local container ports directly and drives the sim that way.
+let API_BASE = '/api';
+async function resolveSim() {
+  const candidates = ['/api'];
+  for (let p = 7890; p <= 7899; p++) candidates.push(`http://localhost:${p}`);
+  for (let p = 7870; p <= 7875; p++) candidates.push(`http://localhost:${p}`);
+  for (const base of candidates) {
+    try {
+      const r = await fetch(`${base}/state`, { signal: AbortSignal.timeout(1200) });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.ok !== undefined) { API_BASE = base; console.log('[tami-web] sim at', base); return true; }
+      }
+    } catch { /* next candidate */ }
+  }
+  return false;
+}
+
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const POLL_STATE_MS = 400;      // /api/state cadence
 const POLL_CONSOLE_MS = 1000;   // /api/console/tail cadence (combat log + errors)
@@ -67,7 +89,7 @@ fitRenderer();
 // debug layer (press G to toggle it back on).
 let mapMode = false;
 new GLTFLoader().load(
-  '/map.gltf',
+  import.meta.env.BASE_URL + 'map.gltf',
   (gltf) => {
     scene.add(gltf.scene);
     mapMode = true;
@@ -170,7 +192,7 @@ function unitEntry(u) {
   if (!e) {
     if (!portraitTex.has(u.name)) {
       const tex = texLoader.load(
-        `/api/portrait?unit=${encodeURIComponent(u.name)}`,
+        `${API_BASE}/portrait?unit=${encodeURIComponent(u.name)}`,
         (t) => {
           // Scale the billboard by the sprite's real aspect ratio.
           const a = t.image.width / t.image.height;
@@ -285,7 +307,7 @@ const KO_RE = /(.+?) was defeated!/;
 
 async function pollConsole() {
   try {
-    const r = await fetch('/api/console/tail?n=300');
+    const r = await fetch(`${API_BASE}/console/tail?n=300`);
     const j = await r.json();
     lastErrCount = j.errorCount ?? -1;
     const lines = j.lines || [];
@@ -345,7 +367,7 @@ let stateOk = false;
 
 async function pollState() {
   try {
-    const r = await fetch(`/api/state?margin=${STATE_MARGIN}`);
+    const r = await fetch(`${API_BASE}/state?margin=${STATE_MARGIN}`);
     lastState = await r.json();
     stateOk = !!lastState.ok;
     if (stateOk) {
@@ -368,10 +390,12 @@ function drawHud() {
     : 'sim: <span class="err">unreachable</span> - start the player + a battle\n(see README runbook)';
 }
 
-setInterval(pollState, POLL_STATE_MS);
-setInterval(pollConsole, POLL_CONSOLE_MS);
-pollState();
-pollConsole();
+resolveSim().then(() => {
+  setInterval(pollState, POLL_STATE_MS);
+  setInterval(pollConsole, POLL_CONSOLE_MS);
+  pollState();
+  pollConsole();
+});
 
 // ── UNITY LIVE VIEW ──────────────────────────────────────────────────────────
 // Picture-in-picture of the REAL Unity render, polled from /frame (the
@@ -383,7 +407,7 @@ unityView.addEventListener('click', () => unityView.classList.toggle('big'));
 let lastFrameUrl = null;
 async function pollFrame() {
   try {
-    const r = await fetch('/api/frame');
+    const r = await fetch(`${API_BASE}/frame`);
     if (!r.ok || !(r.headers.get('content-type') || '').includes('image')) {
       unityView.style.display = 'none';
       return;

@@ -72,7 +72,9 @@ function snapSinkPlugin() {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // GitHub Pages serves the built site at /tami-web/ - dev stays at root.
+  base: command === 'build' ? '/tami-web/' : '/',
   plugins: [tamiAssetsPlugin(), snapSinkPlugin()],
   server: {
     port: 5173,
@@ -84,4 +86,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

@@ -1,5 +1,14 @@
 # tami-web - three.js mirror of the Tami battle sim
 
+**Hosted viewer: https://rj45thompson.github.io/tami-web/** - the GitHub-Pages
+page drives your *locally running* game: browsers treat localhost as a secure
+origin and WebPlayBridge sends CORS on every route, so the hosted page probes
+ports 7890-7899/7870-7875 and connects to whatever container it finds. Start a
+container (`node docker.mjs up 1`, or any player/editor play session) and open
+the URL - no local web server needed. The exported map (`public/map.gltf`)
+stays local-only (vendor art is not published); hosted mode shows the schematic
+board + live Unity frames instead.
+
 A web renderer + AI test harness for Tami. The REAL C# game runs headless (standalone
 player build or editor play mode); this repo renders its live state in three.js and
 gives agents/browsers an instant-iteration surface. No game assets are copied - sprites
