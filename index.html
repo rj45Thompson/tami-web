@@ -30,6 +30,72 @@
       position: absolute; left: 6px; top: 4px; color: #cfe3ff; font: 11px Consolas, monospace;
       background: rgba(10, 14, 30, .7); padding: 1px 6px; border-radius: 4px; pointer-events: none;
     }
+
+    /* ── Interactive phase overlays (title / deploy / battle) ────────────── */
+    .btn {
+      display: block; width: 100%; text-align: left; padding: 9px 12px; margin: 4px 0;
+      background: #16271d; color: #cfe8d8; border: 1px solid #2a3b66; border-radius: 5px;
+      font: 13px Consolas, monospace; cursor: pointer;
+    }
+    .btn:hover:not(:disabled) { background: #1e3527; border-color: #3ee08c; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn.armed { background: #2a3f1e; border-color: #ffd24a; color: #ffd24a; }
+    .btn.end { border-color: #ffd24a; color: #ffd24a; }
+
+    #titleOverlay {
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(6, 8, 16, .82); z-index: 20;
+    }
+    .titlebox {
+      width: 320px; background: #0e1813; border: 1px solid #2a3b66; border-radius: 8px;
+      padding: 24px; text-align: center;
+    }
+    .titlebox h1 { color: #3ee08c; letter-spacing: 4px; margin: 0 0 18px; font-size: 22px; }
+
+    #deployOverlay {
+      position: fixed; top: 96px; right: 8px; width: 320px; max-height: 75vh; overflow-y: auto;
+      background: rgba(10, 14, 30, .85); border: 1px solid #2a3b66; border-radius: 6px;
+      padding: 10px 12px; color: #cfe3ff; font-size: 12px; display: none; z-index: 15;
+    }
+    .deployhead { font-size: 14px; color: #3ee08c; margin-bottom: 4px; }
+    .synergy { color: #ffd24a; font-size: 11px; margin-bottom: 8px; min-height: 14px; }
+    .rostercard {
+      border: 1px solid #223; border-radius: 5px; padding: 6px 8px; margin-bottom: 6px;
+      background: #0f1a27;
+    }
+    .rostercard.placed { border-color: #2f7fd6; opacity: .75; }
+    .rname { font-weight: bold; }
+    .req { color: #7f96c4; font-size: 10px; margin: 2px 0 4px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .chip {
+      background: #16271d; border: 1px solid #2a3b66; border-radius: 10px; padding: 2px 8px;
+      font-size: 10px; cursor: pointer;
+    }
+    .chip:hover { border-color: #3ee08c; }
+    .chip.eq { border-color: #ffd24a; color: #ffd24a; }
+
+    #battleActions {
+      position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%);
+      width: 420px; max-width: 92vw; background: rgba(10, 14, 30, .85);
+      border: 1px solid #2a3b66; border-radius: 6px; padding: 8px 12px;
+      color: #cfe3ff; font-size: 12px; display: none; z-index: 15;
+    }
+    #battleActions .techrow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+    #battleActions .techbtn {
+      flex: 1 1 auto; min-width: 90px; text-align: center; padding: 6px 8px;
+      background: #16271d; border: 1px solid #2a3b66; border-radius: 5px; cursor: pointer;
+    }
+    #battleActions .techbtn:hover:not(.disabled) { border-color: #3ee08c; }
+    #battleActions .techbtn.disabled { opacity: .4; cursor: not-allowed; }
+    #battleActions .techbtn.armed { border-color: #ffd24a; color: #ffd24a; }
+
+    #banner {
+      position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 40px; font-weight: bold; letter-spacing: 6px; display: none; z-index: 25;
+      text-shadow: 0 2px 10px #000;
+    }
+    #banner.victory { display: block; color: #3ee08c; }
+    #banner.defeat { display: block; color: #ff5a5a; }
   </style>
 </head>
 <body>
@@ -37,6 +103,10 @@
   <div id="hud">connecting to sim...</div>
   <div id="feed"></div>
   <div id="unityview" title="click to toggle size"><img id="unityframe" alt="" /><span class="tag">UNITY LIVE</span></div>
+  <div id="titleOverlay"></div>
+  <div id="deployOverlay"></div>
+  <div id="battleActions"></div>
+  <div id="banner"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

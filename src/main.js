@@ -150,7 +150,7 @@ function syncTiles(tiles) {
       const geo = new THREE.BoxGeometry(TILE * 0.98, depth, TILE * 0.98);
       const mesh = new THREE.Mesh(geo, terrainMat(t.terrain));
       mesh.position.set(t.c * TILE, tileTopY(h) - depth / 2, t.r * TILE);
-      mesh.userData = { terrain: t.terrain, h };
+      mesh.userData = { terrain: t.terrain, h, c: t.c, r: t.r };
       tileGroup.add(mesh);
       e = { mesh, fx: new Map() };
       tileMeshes.set(key, e);
@@ -361,11 +361,217 @@ function autoFit(grid, units) {
   camera.position.set(cx + d * 0.45, d * 0.85, cz + d * 0.75);
 }
 
+// ── INTERACTIVE PHASE STATE MACHINE (title -> deploy -> battle) ─────────────
+// The C# backend (WebPlayBridge) already implements the FULL interactive
+// path - menu mode select, deploy placement/equip/roster editor, in-battle
+// move/attack/end-turn - built before this session. Tonight's work is wiring
+// a real front-end to those existing routes (menu/select, deploy/*, action)
+// plus one tiny additive route (/menu/state) to detect "at the title screen".
+// See tami-web/PROGRESS.md for the full checklist and scope notes.
+const titleEl = document.getElementById('titleOverlay');
+const deployEl = document.getElementById('deployOverlay');
+const actionsEl = document.getElementById('battleActions');
+const bannerEl = document.getElementById('banner');
+
+let phase = 'loading';   // 'loading' | 'title' | 'deploy' | 'battle'
+let pending = null;      // battle: {kind:'move'} | {kind:'attack', slot}
+let placeArmed = null;   // deploy: roster index armed for placement, or null
+let deployZoneKeys = new Set();      // "c,r" tiles inside the deploy zone
+let deployOccupied = new Map();      // "c,r" -> roster index (recall-by-click)
+const zoneHighlights = new Map();    // "c,r" -> highlight mesh
+
+const MODES = ['Random', 'VSMatch', 'Arena', 'Retro', 'TestScenarios', 'DeploymentTest', 'WatchBattle'];
+
+function renderTitle() {
+  if (!titleEl.dataset.built) {
+    titleEl.innerHTML = '<div class="titlebox"><h1>TAMI</h1>' +
+      MODES.map((m) => `<button class="btn modebtn" data-mode="${m}">${m}</button>`).join('') +
+      '</div>';
+    titleEl.querySelectorAll('.modebtn').forEach((b) => b.addEventListener('click', () => {
+      fetch(`${API_BASE}/menu/select?mode=${b.dataset.mode}`);
+    }));
+    titleEl.dataset.built = '1';
+  }
+}
+
+function updateZoneHighlights(zone) {
+  const want = new Set((zone || []).map((z) => `${z.col},${z.row}`));
+  for (const [key, mesh] of zoneHighlights) {
+    if (!want.has(key)) { tileGroup.remove(mesh); zoneHighlights.delete(key); }
+  }
+  for (const key of want) {
+    if (zoneHighlights.has(key)) continue;
+    const [c, r] = key.split(',').map(Number);
+    const te = tileMeshes.get(key);
+    const y = te ? tileTopY(te.mesh.userData.h) : 0.15;
+    const m = new THREE.Mesh(fxGeo, new THREE.MeshBasicMaterial({
+      color: 0xffd24a, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(c * TILE, y + 0.08, r * TILE);
+    tileGroup.add(m);
+    zoneHighlights.set(key, m);
+  }
+}
+function clearZoneHighlights() {
+  for (const m of zoneHighlights.values()) tileGroup.remove(m);
+  zoneHighlights.clear();
+}
+
+function renderDeploy(dj) {
+  deployZoneKeys = new Set((dj.zone || []).map((z) => `${z.col},${z.row}`));
+  deployOccupied = new Map();
+  for (const u of dj.roster) if (u.placed && u.col !== undefined) deployOccupied.set(`${u.col},${u.row}`, u.i);
+  updateZoneHighlights(dj.zone);
+
+  let html = `<div class="deployhead">Deploy - ${dj.placed}/${dj.cap} placed</div>`;
+  html += `<div class="synergy">${dj.synergy || ''}</div>`;
+  html += '<div class="rosterlist">';
+  for (const u of dj.roster) {
+    const armed = placeArmed === u.i;
+    html += `<div class="rostercard ${u.placed ? 'placed' : ''} ${armed ? 'armed' : ''}">`
+      + `<div class="rname">${u.name}${u.placed ? ' ✓ (click its tile to recall)' : ''}</div>`
+      + `<div class="req">Eq: ${u.eq1 || '-'}${u.eq2 ? ', ' + u.eq2 : ''}${u.eqAcc ? ', ' + u.eqAcc : ''}</div>`;
+    if (!u.placed) {
+      html += `<button class="btn placebtn ${armed ? 'armed' : ''}" data-i="${u.i}">`
+        + `${armed ? 'Click a gold tile...' : 'Arm for placement'}</button>`;
+    }
+    if (u.unlocked && u.unlocked.length) {
+      html += '<div class="chips">' + u.unlocked.map((a) =>
+        `<span class="chip eqchip ${(a.name === u.eq1 || a.name === u.eq2) ? 'eq' : ''}" data-i="${u.i}" data-a="${a.a}">${a.name}</span>`
+      ).join('') + '</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  html += `<button class="btn end startbtn" ${dj.placed < 1 ? 'disabled' : ''}>Start Battle</button>`;
+  deployEl.innerHTML = html;
+
+  deployEl.querySelectorAll('.placebtn').forEach((b) => b.addEventListener('click', () => {
+    const i = parseInt(b.dataset.i, 10);
+    placeArmed = placeArmed === i ? null : i;
+    renderDeploy(dj);
+  }));
+  deployEl.querySelectorAll('.eqchip').forEach((c) => c.addEventListener('click', () => {
+    fetch(`${API_BASE}/deploy/equip?i=${c.dataset.i}&a=${c.dataset.a}`);
+  }));
+  const startBtn = deployEl.querySelector('.startbtn');
+  if (startBtn && dj.placed >= 1) startBtn.addEventListener('click', () => fetch(`${API_BASE}/deploy/finish`));
+}
+
+function renderBattleActions(s) {
+  // PlayerMovement/PlayerAttack = mid-targeting (armed a move/attack, waiting
+  // on a tile click). yourTurn is false here (it requires state===Idle), but
+  // the player still needs a way back out - a bad/out-of-range tile click
+  // otherwise softlocks with no route back to Idle (found 2026-07-20; fixed
+  // server-side with /action?type=cancel, ungated on yourTurn).
+  if (s.state === 'PlayerMovement' || s.state === 'PlayerAttack') {
+    actionsEl.innerHTML = '<div class="techrow">targeting - click a valid tile, or</div>'
+      + '<button class="btn end cancelbtn">Cancel</button>';
+    actionsEl.querySelector('.cancelbtn')?.addEventListener('click', () => {
+      fetch(`${API_BASE}/action?type=cancel`);
+      pending = null;
+    });
+    return;
+  }
+  if (!s.yourTurn) {
+    actionsEl.innerHTML = '<div class="techrow">enemy turn / resolving...</div>';
+    pending = null;
+    return;
+  }
+  let html = '<div class="techrow">';
+  html += `<div class="techbtn movebtn ${pending?.kind === 'move' ? 'armed' : ''} ${s.canMove ? '' : 'disabled'}">Move</div>`;
+  for (const t of s.techniques || []) {
+    const disabled = !t.canAfford;
+    const armed = pending?.kind === 'attack' && pending.slot === t.slot;
+    html += `<div class="techbtn atkbtn ${armed ? 'armed' : ''} ${disabled ? 'disabled' : ''}" `
+      + `data-slot="${t.slot}" data-self="${t.self}">${t.name} (${t.ap}AP)</div>`;
+  }
+  html += '</div><button class="btn end endbtn">End Turn</button>';
+  actionsEl.innerHTML = html;
+
+  const moveBtn = actionsEl.querySelector('.movebtn');
+  if (moveBtn && s.canMove) moveBtn.addEventListener('click', () => {
+    pending = pending?.kind === 'move' ? null : { kind: 'move' };
+    renderBattleActions(s);
+  });
+  actionsEl.querySelectorAll('.atkbtn:not(.disabled)').forEach((b) => b.addEventListener('click', () => {
+    const slot = parseInt(b.dataset.slot, 10);
+    if (b.dataset.self === 'true') {
+      fetch(`${API_BASE}/action?type=attack&slot=${slot}`);
+      pending = null;
+    } else {
+      pending = (pending?.kind === 'attack' && pending.slot === slot) ? null : { kind: 'attack', slot };
+    }
+    renderBattleActions(s);
+  }));
+  actionsEl.querySelector('.endbtn')?.addEventListener('click', () => {
+    fetch(`${API_BASE}/action?type=end`);
+    pending = null;
+  });
+}
+
+function renderBanner(state) {
+  if (state === 'Victory') { bannerEl.className = 'victory'; bannerEl.textContent = '★ VICTORY ★'; }
+  else if (state === 'Defeat') { bannerEl.className = 'defeat'; bannerEl.textContent = 'DEFEAT'; }
+  else { bannerEl.className = ''; }
+}
+
+function applyPhase(p, deployData) {
+  phase = p;
+  titleEl.style.display = p === 'title' ? 'flex' : 'none';
+  deployEl.style.display = p === 'deploy' ? 'block' : 'none';
+  actionsEl.style.display = p === 'battle' ? 'block' : 'none';
+  if (p !== 'deploy') { clearZoneHighlights(); placeArmed = null; }
+  if (p !== 'battle') bannerEl.className = '';
+  if (p === 'title') renderTitle();
+  else if (p === 'deploy') renderDeploy(deployData);
+  else if (p === 'battle') { renderBattleActions(lastState); renderBanner(lastState.state); }
+}
+
+// ── RAYCASTER: click a tile mesh -> resolve (c,r) -> dispatch by phase ──────
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+renderer.domElement.addEventListener('click', (ev) => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointerNdc.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointerNdc, camera);
+  const hit = raycaster.intersectObjects(tileGroup.children, false)
+    .find((h) => h.object.userData && h.object.userData.c !== undefined);
+  if (!hit) return;
+  const { c, r } = hit.object.userData;
+  onTileClick(c, r);
+});
+
+// Exposed for the AI test harness - fires the exact same dispatch a real
+// click on tile (c,r) would, without needing pixel-accurate raycasting via a
+// screenshot tool. Same function real clicks use, so it's a proof of the
+// actual interactive path, not a bypass of it.
+window.__testClick = (c, r) => onTileClick(c, r);
+
+function onTileClick(c, r) {
+  const key = `${c},${r}`;
+  if (phase === 'deploy') {
+    if (deployOccupied.has(key)) fetch(`${API_BASE}/deploy/recall?col=${c}&row=${r}`);
+    else if (placeArmed !== null && deployZoneKeys.has(key)) {
+      fetch(`${API_BASE}/deploy/place?i=${placeArmed}&col=${c}&row=${r}`);
+      placeArmed = null;
+    }
+  } else if (phase === 'battle' && pending) {
+    if (pending.kind === 'move') fetch(`${API_BASE}/action?type=move&col=${c}&row=${r}`);
+    else if (pending.kind === 'attack') fetch(`${API_BASE}/action?type=attack&slot=${pending.slot}&col=${c}&row=${r}`);
+    pending = null;
+  }
+}
+
 // ── POLLING ──────────────────────────────────────────────────────────────────
 let lastState = null;
 let stateOk = false;
 
 async function pollState() {
+  // Board rendering (tiles/units/camera) is always driven by /state - deploy
+  // placements are real Unit objects on real tiles, so this covers deploy too.
   try {
     const r = await fetch(`${API_BASE}/state?margin=${STATE_MARGIN}`);
     lastState = await r.json();
@@ -376,6 +582,31 @@ async function pollState() {
       if (lastState.grid) autoFit(lastState.grid, lastState.units);
     }
   } catch { stateOk = false; }
+
+  // Phase resolution: GameManager.Instance is non-null (state:"Idle", not
+  // "NoBattle") even at the title screen, so /state ALONE can't distinguish
+  // title from battle - titleUp and deploying are the only authoritative
+  // signals, checked first; /state + a live-unit count is the fallback
+  // "actually mid-battle" heuristic once both of those are false.
+  let resolved = 'loading';
+  let deployData = null;
+  try {
+    const mj = await (await fetch(`${API_BASE}/menu/state`)).json();
+    if (mj.ok && mj.titleUp) resolved = 'title';
+  } catch { /* bridge hiccup - fall through */ }
+
+  if (resolved !== 'title') {
+    try {
+      const dj = await (await fetch(`${API_BASE}/deploy/state`)).json();
+      if (dj.ok && dj.deploying) { resolved = 'deploy'; deployData = dj; }
+    } catch { /* not deploying */ }
+  }
+
+  if (resolved === 'loading' && stateOk && lastState.state !== 'NoBattle' && (lastState.units?.length ?? 0) > 0) {
+    resolved = 'battle';
+  }
+
+  applyPhase(resolved, deployData);
   drawHud();
 }
 
@@ -386,7 +617,7 @@ function drawHud() {
     ? '<span class="ok">console errors: 0</span>'
     : `<span class="err">console errors: ${lastErrCount}</span>`;
   hud.innerHTML = stateOk
-    ? `sim: <span class="ok">connected</span>  state: ${s.state}\nunits: ${units}  tiles: ${s.tiles?.length ?? 0}\n${errLine}`
+    ? `sim: <span class="ok">connected</span>  phase: ${phase}  state: ${s.state}\nunits: ${units}  tiles: ${s.tiles?.length ?? 0}\n${errLine}`
     : 'sim: <span class="err">unreachable</span> - start the player + a battle\n(see README runbook)';
 }
 
