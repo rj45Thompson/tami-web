@@ -18,7 +18,6 @@ const TERRAIN_COLORS = {
 const app = document.getElementById('app');
 const hud = document.getElementById('hud');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -33,11 +32,22 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.1);
 sun.position.set(8, 14, 6);
 scene.add(sun);
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
+// Size can be 0 at load (embedded/background panes) - fit now, on resize, and
+// self-heal whenever the drawing buffer is found at zero.
+function fitRenderer() {
+  const w = innerWidth || document.documentElement.clientWidth || 800;
+  const h = innerHeight || document.documentElement.clientHeight || 600;
+  if (w === 0 || h === 0) return;
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+  renderer.setSize(w, h);
+}
+addEventListener('resize', fitRenderer);
+setInterval(() => {
+  const c = renderer.domElement;
+  if (c.width === 0 || c.height === 0) fitRenderer();
+}, 500);
+fitRenderer();
 
 // ── LIVE STATE → MESHES ──────────────────────────────────────────────────────
 const tileGroup = new THREE.Group();
@@ -173,6 +183,23 @@ setInterval(pollState, POLL_STATE_MS);
 setInterval(pollConsole, POLL_CONSOLE_MS);
 pollState();
 pollConsole();
+
+// ── AGENT HOOK ───────────────────────────────────────────────────────────────
+// Deterministic canvas snapshot for the AI harness (render + read in one task,
+// so no preserveDrawingBuffer needed). Returns a PNG data URL.
+window.__snap = (w = 640, h = 360) => {
+  const c = renderer.domElement;
+  const ow = c.width, oh = c.height;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.render(scene, camera);
+  const url = renderer.domElement.toDataURL('image/png');
+  renderer.setSize(ow, oh, false);
+  camera.aspect = ow / oh;
+  camera.updateProjectionMatrix();
+  return url;
+};
 
 // ── RENDER LOOP ──────────────────────────────────────────────────────────────
 const clock = new THREE.Clock();

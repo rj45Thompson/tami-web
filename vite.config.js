@@ -42,8 +42,33 @@ function tamiAssetsPlugin() {
   };
 }
 
+/** POST /agent/snap with a PNG data URL body -> writes _snaps/latest.png.
+ *  Lets the AI harness persist canvas snapshots (window.__snap()) to disk. */
+function snapSinkPlugin() {
+  return {
+    name: 'agent-snap-sink',
+    configureServer(server) {
+      server.middlewares.use('/agent/snap', (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
+        let body = '';
+        req.on('data', (c) => { body += c; });
+        req.on('end', () => {
+          const m = /^data:image\/png;base64,(.+)$/.exec(body.trim());
+          if (!m) { res.statusCode = 400; return res.end('expected png data url'); }
+          const dir = path.join(process.cwd(), '_snaps');
+          fs.mkdirSync(dir, { recursive: true });
+          const file = path.join(dir, 'latest.png');
+          fs.writeFileSync(file, Buffer.from(m[1], 'base64'));
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ ok: true, path: file.replace(/\\/g, '/') }));
+        });
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [tamiAssetsPlugin()],
+  plugins: [tamiAssetsPlugin(), snapSinkPlugin()],
   server: {
     port: 5173,
     proxy: {
